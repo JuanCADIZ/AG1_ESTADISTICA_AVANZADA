@@ -1,0 +1,281 @@
+rm(list=ls())
+
+#================================== Paquetes ==================================#
+#instalamos los paquetes
+if (!require('rstudioapi')) install.packages('rstudioapi') 
+if (!require('ggplot2')) install.packages('ggplot2')
+if (!require('dplyr')) install.packages('dplyr')
+if (!require('fastDummies')) install.packages('fastDummies') 
+if (!require('lmtest')) install.packages('lmtest')
+if (!require('car')) install.packages('car')
+if(!require('glmnet')) install.packages("glmnet")
+if(!require('nortest')) install.packages("nortest")
+if(!require('moments')) install.packages("moments")
+
+library(rstudioapi) 
+library(ggplot2) 
+library(dplyr) 
+library(fastDummies) 
+library(lmtest) 
+library(car)
+library(glmnet)
+library(nortest)
+library(moments)
+
+#===================== Directorio e importacion de datos =======================# 
+setwd(dirname(getActiveDocumentContext()$path))
+
+# Especifica la ruta del archivo CSV
+ruta <- '/Users/juanmartin/Desktop/DATASET_ACTIVIDAD_ESTADISTICA /DATASET BUENO DE VERDAD/airbnb_limpio.csv'
+
+# Lee el archivo CSV y almacena los datos en un data frame
+data <- read.csv(ruta,sep = ",")
+# Verifica el contenido del data frame
+head(data)  # Muestra las primeras filas del data frame
+
+#============================== Analisis descriptivo ==========================#
+# Funcion para obtener los descriptivos
+descriptivos<-function(x){
+  round(c(n = length(x[!is.na(x)]),
+    Promedio=mean(x,na.rm=T),
+    Varianza = var(x,na.rm=T),
+    Desviacion = sd(x,na.rm=T),
+    Coef.Var = sd(x,na.rm=T)/mean(x,na.rm=T),
+    Mediana = median(x,na.rm=T),
+    Asimetria = skewness(x,na.rm=T),
+    Curtosis = kurtosis(x,na.rm=T)),4)
+}
+
+descriptivos(data$City)
+descriptivos(data$Price)
+descriptivos(data$Guest.Satisfaction)
+descriptivos(data$Bedrooms)
+descriptivos(data$City.Center..km.)
+descriptivos(data$Normalised.Attraction.Index)
+descriptivos(data$Normalised.Restraunt.Index)
+# Del precio por noche se observa que el promedio es de 260 euros con una desviacion estandar
+# de 279 que reoresenta el 107% en relacion al promedio, por lo tanto se dice que la el precio
+# por noche tiene una variabildiad muy amplia en cuanto a los preciosa, comparando el promedio
+# con la mediana se observa una diferencia notable de al rededos de 60 euros lo que indica que
+# el promedio no es una medida central representativa para los datos, por lo que metodos
+# parametricos de predecir este valor promedio resultarian sesgados, confirmando este dato se encuentra
+# el valor de la asimetria de 23.81 que es muy superior a cero, lo que refleja una
+# asimetria por la derecha muy evidente en el precio por noche, finalmente el valor de curtosis 
+# de 1152 indca que los datos se estan aglomerando en un pequeno rango de valores.
+
+
+#Precio en Euros
+precio<- data %>%
+  ggplot(aes(x=Price)) +
+  geom_histogram(bins=ceiling(1+3.3*log10(nrow(data))), fill='green', color='black') +
+  xlab('Price')+ylab('Frecuencia')+ ggtitle("Precio por noche") 
+precio
+  
+## tipo de habitaciones data %>%
+tipo_de_habitacion <- data %>%
+  ggplot(aes(x=Room.Type))+ geom_histogram(bins=8,color='black',fill='yellow')+ 
+  xlab('Tipo de habitacion')+ylab('Frecuencia')+ggtitle('Tipo de apartamentos ofertados')
+tipo_de_habitacion 
+
+##Numero de personas que entran en el apartamento
+capacidad <- data %>%
+  ggplot(aes(x=Person.Capacity))+geom_histogram(bin=8,color='black',fill='yellow')+
+  xlab('Capacidad')+ylab('Frecuencia')+ggtitle('Capacidad de la habitacion')
+capacidad 
+
+#habitaciones multiples --> se refiere a que si es un apartamento tenga más de una habitación
+Habitaciones <- data %>%
+  ggplot(aes(x=factor(Multiple.Rooms),fill=factor(Multiple.Rooms)))+
+  geom_bar()+
+  xlab('Más de 1 habitación')+
+  ylab('Frecuencia')+
+  ggtitle('Apartamento con más de una habitación')
+Habitaciones
+
+#Alquiler para empresas
+Negocios <- data %>%
+  ggplot(aes(x=factor(Business)))+
+  geom_bar(bin=8,color='black',fill='blue')+
+  xlab('Business')+ylab('Frecuencia')+ggtitle('Alquiler para empresas')
+Negocios 
+
+#Grado de satisfacción con la limpieza
+limpieza<- data %>%
+  ggplot(aes(x=Cleanliness.Rating))+geom_histogram(bin=5,binwidth=1,color='black',fill='green')+
+  xlab('Satisfacción')+ylab('Frecuencia')+ggtitle('Grado de satisfacción con la limpieza')
+limpieza # Aqui no hay que hacer un histograma, es un grafico de barras
+
+#Grado de satisfacción con del anfitrión
+satisfaccion_anfitrion<- data %>%
+  ggplot(aes(x=Guest.Satisfaction))+geom_histogram(bin=5,binwidth=4,color='black',fill='blue')+
+  xlab('Satisfacción (%)')+ylab('Frecuencia')+ggtitle('Grado de satisfacción del anfitrion')
+satisfaccion_anfitrion # Aqui no hay que hacer un histograma, es un grafico de barras
+
+#numero de habitaciones por vivienda 
+habs <- data %>%
+  ggplot(aes(x = Bedrooms)) +
+  geom_histogram(breaks = seq(0.5, max(data$Bedrooms) + 0.5, by = 1),bins=3, binwidth=3,color = 'black', fill = 'orange') +
+  scale_x_continuous(breaks = seq(1, max(data$Bedrooms), by = 1)) +
+  xlab('Cantidad (unidades)') +
+  ylab('Frecuencia') +
+  ggtitle('Numero de cuartos por vivienda')
+
+habs
+
+####---    En geom_histogram(), hemos utilizado el argumento breaks para definir 
+####los puntos de quiebre de las barras del histograma. 
+###Usamos la función seq() para crear una secuencia de valores de 0.5 
+####hasta el valor máximo de "Bedrooms" más 0.5 con un paso de 1. 
+###Esto asegura que las barras del histograma tengan un ancho de 1 unidad 
+###y que los valores en el eje x estén centrados en los enteros.
+####Utilizamos scale_x_continuous() para configurar los valores en el eje x. 
+###Específicamente, utilizamos breaks para establecer las marcas en el eje x 
+###desde 1 hasta el valor máximo de "Bedrooms" con un paso de 1, asegurando 
+####que los valores se muestren de 1 en 1 en el eje x.
+
+
+##distancia al centro de la ciudad en la que se encuentra el apartamento en km
+distancia  <- data %>%
+  ggplot(aes(x=City.Center..km.))+
+  geom_histogram(bins=5,color='black',fill='red')+
+  xlab("Distancia")+
+  ylab('Frecuencia')+
+  ggtitle("Distancia al centro de la ciudad")
+distancia  
+
+
+distancia2<- data %>%
+  ggplot(aes(x=City.Center..km.))+
+  geom_histogram(color='black', fill='red')+
+  xlab("Distancia al centro de la ciudad(km)")+
+  ylab("Frecuencia")+
+  ggtitle("Distribución de la Distancia al centro de la ciudad")+
+  theme_minimal()
+
+distancia2
+
+#En este código, hemos utilizado geom_histogram para crear un histograma de la distancia 
+#al centro de la ciudad. También hemos agregado líneas verticales 
+#punteadas en azul para representar la media y en verde para representar la mediana. 
+#Estas líneas verticales
+#ayudarán a visualizar la ubicación de estos valores en la distribución de la distancia.
+
+#ciudad de localización de la vivienda
+ciudad<- data%>%
+  ggplot(aes(x=City,fill=City))+
+  geom_bar(aes(y=(..count..)/sum(..count..)*100))+
+  scale_y_continuous(labels=scales::percent_format(scale=1))+
+  theme(legend.position=")+
+  xlab(")+
+  ylab("Porcentaje")+
+  ggtitle('Ciudad de localización de la vivienda')
+ciudad 
+  
+#grado de atraccion del cliente con el apartamento (normalizado)
+satisfaccion_anfitrion<- data%>%
+  ggplot(aes(x=Normalised.Attraction.Index))+
+  geom_histogram(bins=ceiling(1+3.3*log10(nrow(data))),color="black",fill="blue")+
+  xlab("indice de atraccion normalizado")+
+  ylab("Frecuencia")+
+  ggtitle("Indice de atracción del cliente normalizado")
+satisfaccion_anfitrion
+
+#ciudad de localización de la vivienda
+satisfaccion_restaurantes<- data%>%
+  ggplot(aes(x=Normalised.Restraunt.Index))+
+  geom_histogram(bins=ceiling(1+3.3*log10(nrow(data))),color="black",fill="purple")+
+  xlab("indice de satisfaccion con restaurantes cercanos normalizado")+
+  ylab("Frecuencia")+
+  ggtitle("Indice de atracción del cliente con los restaurantes cercanos al apartamento normalizado")
+satisfaccion_restaurantes 
+
+##regresión lineal 
+unique(data$City)
+data1<- dummy_cols(data,select_columns=c('City','Room.Type'),remove_selected_columns = TRUE) #transformamos las columnas de ciudad y tipo de habitacion en dicotomicas (crear una variable o uan columna dentro del dataframe con cada uno de los paises)
+unique(data$City)
+data1<- data1 %>%
+  select(Price,Bedrooms,Person.Capacity,City_Amsterdam,City_Athens,City_Barcelona,City_Berlin,City_Berlin,City_Budapest,City_Budapest,City_Lisbon,City_Paris,City_Rome,City_Vienna,
+         Room.Type_1,Room.Type_2,Room.Type_3) #seleccion de las variables
+  reg<- lm(data=data1,Price~.) #hacemos la regresion lineal ~. esto significa que corremos la regresion con todas las variables dentro del dataframe
+  regreg_step <-step(reg,direction='backward') #la regresion step step consigue la regresion que tenga el AIC (criterio de seleccion de akaike) mas alto
+  summary(regreg_step)
+  summary(reg) #por cada habitacion extra el precio va a aumentar 63.641 en promedio, la peniente del modelo es -96.281, 8esto es cuando interretas pendientes de variables cuantitativas)
+  #si una casa está en masterdam aumentael precio es 355.894
+# ahora las dicotomicas (room.type 1, room.type2, room.type3 sería el intercept (-96.281)), estos numeros significan la brecha entre que la habitacion sea o no sea de un tipo,estos valores suben o bajan la pendiente 
+  #todas estas son respeto a viena, por ejemplo si la habitacion está en masterdam aumenta en 355.281 respecto al precio de viena.
+  #std.error es el valor estandar de cada uno de esos parámetros, el t valor sirve para corroborar la significancia de los parámetros del modelo. el p valor es bajo
+  #cuanto se parezca el multiple-R-squared del Radjusted R-squeared es mucho mejor el modelo.
+  #análisis de los supuestos de regresión
+#los descritpivos de los residuales (residuals) los residuales son las diferencias entre cada uno de los valores predichos por la recta de regresion y cada valor real de 'y'
+  plot(regreg_step)
+
+
+#### Con estas correcciones se logran los resultados finales
+# Residuals VS Fitted: este grafico sirve para ver la heterocedasticidad, tenemos problema de heterocedasticidad (forma de cono) la varianza de los residuales está incrementando respecto a los valores ajustados.
+
+# Q-Q: Transformar la variable para que se apegue mas a la linea, este grafico se utiliza para ver la noramlidad de los residuos
+  #tenemos valores atipicos, tendriamos que replantear el modelo. el modelo no cumple con el supuesto de normalidad
+#   Eliminando outliers
+#   Transformar la variable
+#   Recalcular la variable
+
+# Scale-Location: No hacer nada
+
+# Residuales VS Leverage: Se corrige eliminando outliers
+
+
+lillie.test(regreg_step$residuals) # Prueba de normalidad, no se cumple. prueba de kolmogorov para ver la normalidad
+#D=0.22873 se está incumpliendo el supuesto de normalidad porque el p-valor es menor que 0.05 rechazamos la hipotesis de que los residuales siguen una distribucion normal.
+
+#prueba de heterocedasticidad
+bptest(regreg_step) # Tienes heterocedasticidad
+#como el p-valor es menor de 0.05 rechazamos la hipotesis nula, el modelo presenta heterocedasticidad
+#prueba de multicolinealidad
+#la multicolinealidad te dice si tienes mas de una variable independiente que explica lo mismo que unau otra.
+#menor vif de 5 es bueno,
+vif(regreg_step) # Tienes multicolinealidad, eliminar Room.Type_2 (tiene el vif más alto)
+mean(vif(regreg_step))
+
+#Prueba de autocorrelacion
+dwtest(regreg_step$model) # Revisar cuando se corriga la normalidad
+#como el p-valor es menor de 0.05 observamos que no cumple el supuesto de autocorrelación.
+
+##Regresion Ridge
+# para ello vamos a dividir los datos en predictores (X) y la variable de respuesta (y)
+
+X <- as.matrix(data1[,-1]) #excluir la columna Price
+y <- data1$Price
+#aplicar la regresion de Ridge
+alpha <-0.5
+ridge_model <- glmnet(X, y, alpha = alpha)
+coef(ridge_model) #la ultima son los mejores coeficientes del modelo. 
+
+
+# Visualizar el modelo
+summary(ridge_model)
+ridge_model$a0 #aquí vemos como disminuyen los erroes y el último es el mejor modelo.
+ridge_model$beta
+# Seleccionar el valor óptimo de lambda mediante validación cruzada
+cv_result <- cv.glmnet(X, y, alpha = alpha)
+best_lambda <- cv_result$lambda.min
+print(paste("Lambda óptimo:", best_lambda))
+#con estas lineas de codigo sacamos el lambda minimo (óptimo)
+
+# Ajustar el modelo final con el lambda óptimo
+ridge_final <- glmnet(X, y, alpha = alpha, lambda = best_lambda)
+ypred<-"Obtener los valores predichos"
+# residuales<-y - ypred
+
+# BUscar como hacer las predicciones del modelo ridge y sacar los residuales
+# Y - ypredicho
+
+
+# Resumen del modelo final
+print(summary(ridge_final)) #resumen de todos los parámetros de la funcion regularizada
+
+# Visualización de los coeficientes en función de lambda (trayectoria del coeficiente)
+plot(ridge_final, xvar = "lambda", label = TRUE) # sto nos muestra ridge_model$beta los coeficientes.
+
+
+
+
